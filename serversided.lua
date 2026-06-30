@@ -6,19 +6,22 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
 local config = {
-    wagSpeed = 16,
-    wagAmplitude = 0.4,
-    wagSecondaryAmplitude = 0.15,
-    wagVerticalBounce = 0.08,
+    wagSpeed = 16,                 
+    wagAmplitude = 0.4,             
+    wagSecondaryAmplitude = 0.15,   
+    wagVerticalBounce = 0.08,       
     toggleKey = Enum.KeyCode.F,
-    stiffness = 120,
-    damping = 18,
-    naturalSag = 0.04,
-    velocityPitch = 0.01,
-    velocityYaw = 0.03,
-    velocityRoll = 0.015,
-    turnYaw = 0.15,
-    turnRoll = 0.03,
+
+    stiffness = 120,               
+    damping = 18,                   
+    naturalSag = 0.04,             
+    
+    velocityPitch = 0.01,          
+    velocityYaw = 0.03,            
+    velocityRoll = 0.015,          
+    turnYaw = 0.15,                
+    turnRoll = 0.03,               
+
     velocityWagBoost = 0.4,
 }
 
@@ -29,11 +32,14 @@ local state = {
     wagWeight = 0,
     wagEnabled = false,
     isSetup = false,
+    
     alignOri = nil,
     alignPos = nil,
     tailAttachment = nil,
+    
     baseOffset = CFrame.new(),
     pivotOffset = CFrame.new(),
+    
     handle = nil,
     anchorPart = nil,
     torso = nil,
@@ -80,7 +86,7 @@ local function findCharacter()
             if obj.DisplayName == player.DisplayName or obj.Name == player.Name then
                 local model = obj.Parent
                 if model and model:IsA("Model") then
-                    player.Character = model
+                    player.Character = model 
                     return model
                 end
             end
@@ -119,6 +125,8 @@ local function buildRig(char, accessory, handle)
         end
     end
 
+    -- Massless = true removes it from physical collision checks entirely
+    -- so it physically cannot "stick" to another player's hitbox
     for _, part in ipairs(accessory:GetDescendants()) do
         if part:IsA("BasePart") then
             part.CanCollide = false
@@ -142,9 +150,11 @@ local function buildRig(char, accessory, handle)
         alignPos.Name = "TailPosAlign"
         alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
         alignPos.Attachment0 = tailAtt
-        alignPos.MaxForce = 50000
+        -- ANTI-PANIC FIX: Capped force! 
+        -- 50,000 is instant for a massless part, but prevents universe-flinging math overflows.
+        alignPos.MaxForce = 50000 
         alignPos.Responsiveness = 200
-        alignPos.RigidityEnabled = true
+        alignPos.RigidityEnabled = true 
         alignPos.ReactionForceEnabled = false
         alignPos.Parent = handle
     end
@@ -156,9 +166,10 @@ local function buildRig(char, accessory, handle)
         alignOri.Name = "TailOriAlign"
         alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
         alignOri.Attachment0 = tailAtt
+        -- ANTI-PANIC FIX: Capped torque!
         alignOri.MaxTorque = 50000
         alignOri.Responsiveness = 200
-        alignOri.RigidityEnabled = true
+        alignOri.RigidityEnabled = true 
         alignOri.ReactionTorqueEnabled = false
         alignOri.Parent = handle
     end
@@ -218,19 +229,29 @@ RunService.Heartbeat:Connect(function(dt)
     local torso = state.torso
     if not anchorPart or not anchorPart.Parent or not torso or not torso.Parent then return end
 
+    -- ============================================================
+    -- THE FAILSAFE YANK
+    -- If the tail somehow gets displaced (e.g., lag spike, fling attempt),
+    -- we kill its velocity before the constraints can apply force.
+    -- This guarantees it can never travel far enough to get deleted.
+    -- ============================================================
     local currentPos = state.handle.Position
     local safeTargetPos = (anchorPart.CFrame * state.baseOffset).Position
     local dist = (currentPos - safeTargetPos).Magnitude
 
     if dist > 15 then
+        -- It's severely out of bounds. Force teleport it back instantly.
         state.handle:PivotTo(anchorPart.CFrame * state.baseOffset)
         state.handle.AssemblyLinearVelocity = Vector3.zero
         state.handle.AssemblyAngularVelocity = Vector3.zero
     elseif dist > 3 then
+        -- It's drifting slightly (like brushing against someone). 
+        -- Kill the velocity and let the 50k constraint force smoothly pull it back.
         state.handle.AssemblyLinearVelocity = Vector3.zero
         state.handle.AssemblyAngularVelocity = Vector3.zero
     end
     
+    -- Aggressively keep network ownership so we don't lose control on contact
     pcall(function()
         state.handle:SetNetworkOwner(player)
     end)
@@ -283,8 +304,8 @@ RunService.Heartbeat:Connect(function(dt)
     if state.rotY ~= state.rotY or math.abs(state.rotY) > 10 then state.rotY = 0; state.velY = 0 end
     if state.rotZ ~= state.rotZ or math.abs(state.rotZ) > 10 then state.rotZ = 0; state.velZ = 0 end
 
-    local primaryWag = 0
-    local secondaryWag = 0
+    local primaryWag     = 0
+    local secondaryWag   = 0
     local verticalBounce = 0
 
     if state.wagWeight > 0.001 then
@@ -313,6 +334,7 @@ RunService.Heartbeat:Connect(function(dt)
     state.alignOri.CFrame = targetWorldCF
 end)
 
+-- GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "TailPhysicsController"
 screenGui.ResetOnSpawn = false
